@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: scarletx
+      POSTGRES_USER: scarletx
+      POSTGRES_PASSWORD: scarletx
+    ports:
+      - "5432:5432"
+    volumes:
+      - scarletx_postgres:/var/lib/postgresql/data
+
+volumes:
+  scarletx_postgres:
