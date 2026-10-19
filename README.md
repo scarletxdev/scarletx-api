@@ -14,3 +14,17 @@ npm run dev
 ```
 
 See [the ingestion guide](docs/ingestion.md) for API requests.
+
+## Full catalog backfill
+
+To import every provider change feed locally, start PostgreSQL and run:
+
+```bash
+docker compose up -d postgres
+npm run backfill:local
+```
+
+The script loads `.env`, applies migrations, starts the API when needed, and
+stores progress in `.scarletx-backfill.json`. Re-run the same command after an
+interruption to resume. Use `npm run backfill:local -- --max=1000` to process a
+bounded first run.

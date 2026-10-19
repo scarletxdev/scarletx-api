@@ -12,6 +12,7 @@
     "db:migrate": "node-pg-migrate up -m src/db/migrations",
     "db:rollback": "node-pg-migrate down -m src/db/migrations"
     ,"backfill": "tsx scripts/backfill-provider.ts"
+    ,"backfill:local": "bash scripts/backfill-local.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
