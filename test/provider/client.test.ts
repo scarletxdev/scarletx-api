@@ -55,6 +55,18 @@ describe('MetadataProviderClient', () => {
     await expect(client.fetchById({ provider: 'tmdb', externalId: '123' }, 'movie')).resolves.toMatchObject({ title: 'Live Shape' });
   });
 
+  it('normalizes direct performer records and their images', async () => {
+    const client = new MetadataProviderClient({
+      baseUrl: 'https://metadata.example',
+      fetch: async () => new Response(JSON.stringify({
+        Name: 'Fixture Performer', Aliases: ['Fixture Alias'], ForeignIds: { StashId: 'performer-1' },
+        Images: [{ CoverType: 'Headshot', Url: 'https://images.example/performer.jpg' }],
+      }), { status: 200 }),
+    });
+    await expect(client.fetchById({ provider: 'stashdb', externalId: 'performer-1' }, 'performer'))
+      .resolves.toMatchObject({ title: 'Fixture Performer', aliases: ['Fixture Alias'], images: [{ type: 'Headshot', url: 'https://images.example/performer.jpg' }] });
+  });
+
   it('rejects malformed provider payloads', async () => {
     const client = new MetadataProviderClient({
       baseUrl: 'https://metadata.example',

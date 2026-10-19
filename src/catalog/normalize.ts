@@ -21,7 +21,7 @@ export function normalizeProviderRecord(payload: unknown, entityType: ProviderEn
   const raw = asRecord(payload);
   const source = raw && {
     ...raw,
-    title: raw.title ?? raw.Title, foreignIds: raw.foreignIds ?? raw.ForeignIds,
+    title: raw.title ?? raw.Title ?? raw.name ?? raw.Name, foreignIds: raw.foreignIds ?? raw.ForeignIds,
     aliases: raw.aliases ?? raw.Aliases ?? (Array.isArray(raw.AlternativeTitles) ? raw.AlternativeTitles.map((x: any) => x.Title) : []), genres: raw.genres ?? raw.Genres,
     studio: raw.studio ?? raw.Studio, credits: raw.credits ?? raw.Credits, images: raw.images ?? raw.Images,
   };
@@ -44,8 +44,10 @@ export function normalizeProviderRecord(payload: unknown, entityType: ProviderEn
     images: Array.isArray(source.images)
       ? source.images.flatMap((image) => {
         const item = asRecord(image);
-        if (!item || typeof item.url !== 'string') return [];
-        return [{ url: item.url, type: typeof item.coverType === 'string' ? item.coverType : undefined }];
+        const url = item?.url ?? item?.Url;
+        const type = item?.coverType ?? item?.CoverType;
+        if (!item || typeof url !== 'string') return [];
+        return [{ url, type: typeof type === 'string' ? type : undefined }];
       })
       : [],
     rawPayload: payload,
