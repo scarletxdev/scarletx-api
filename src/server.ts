@@ -7,8 +7,8 @@ const entityType = z.enum(['movie', 'scene', 'performer', 'studio']);
 const idRequest = z.object({ entityType, identity });
 const selectedRequest = z.object({ entityType, query: z.string().min(1), selected: z.array(identity).min(1) });
 
-type IngestionPort = { search(entityType: ProviderEntityType, query: string): Promise<unknown[]>; importById(request: { entityType: ProviderEntityType; identity: ProviderIdentity }): Promise<{ created: boolean; [key: string]: unknown }>; };
-export interface ServerDependencies { ingestion?: IngestionPort; }
+type IngestionPort = { search(entityType: ProviderEntityType, query: string): Promise<unknown[]>; importById(request: { entityType: ProviderEntityType; identity: ProviderIdentity }): Promise<{ created: boolean; snapshotCreated: boolean; titleId?: string; personId?: string; studioId?: string }>; };
+export interface ServerDependencies { ingestion?: IngestionPort; titles?: { findById(id: string): Promise<unknown | undefined> }; }
 
 export function buildServer(dependencies: ServerDependencies = {}): FastifyInstance {
   const app = Fastify();
@@ -31,6 +31,13 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
       if (!parsed.success) return reply.status(422).send({ error: 'validation_error', details: parsed.error.flatten() });
       const results = await Promise.all(parsed.data.selected.map(identity => dependencies.ingestion!.importById({ entityType: parsed.data.entityType, identity })));
       return reply.status(results.some(result => result.created) ? 201 : 200).send(results);
+    });
+  }
+  if (dependencies.titles) {
+    app.get('/api/v1/titles/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const title = await dependencies.titles!.findById(id);
+      return title ? reply.send(title) : reply.status(404).send({ error: 'not_found' });
     });
   }
 

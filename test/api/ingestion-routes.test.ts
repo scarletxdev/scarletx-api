@@ -24,4 +24,12 @@ describe('ingestion routes', () => {
     const response = await app.inject({ method: 'POST', url: '/api/v1/ingestions/by-id', payload: {} });
     expect(response.statusCode).toBe(422);
   });
+
+  it('returns a stored title by ID', async () => {
+    const title = { id: '00000000-0000-0000-0000-000000000000', displayTitle: 'Fixture Movie', studios: [], credits: [] };
+    const app = buildServer({ ingestion: { search: vi.fn(), importById: vi.fn() }, titles: { findById: vi.fn().mockResolvedValue(title) } });
+    const response = await app.inject({ method: 'GET', url: `/api/v1/titles/${title.id}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(title);
+  });
 });
