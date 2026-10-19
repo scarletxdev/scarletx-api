@@ -15,7 +15,7 @@ describe('CatalogRepository', () => {
       identities: [{ provider: 'tmdb', externalId }], aliases: ['Fixture Alias'], genres: ['Drama'],
       studios: [{ name: 'Fixture Studio', identity: { provider: 'stashdb', externalId: `studio-${externalId}` } }],
       credits: [{ personName: 'Fixture Performer', identity: { provider: 'stashdb', externalId: `person-${externalId}` }, role: 'performer', billingOrder: 0 }],
-      images: [], rawPayload: { id: externalId },
+      images: [{ url: `https://images.example/${externalId}.jpg`, type: 'poster' }], rawPayload: { id: externalId },
     };
     const repository = new CatalogRepository(pool);
 
@@ -26,6 +26,16 @@ describe('CatalogRepository', () => {
     await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.external_ids WHERE external_id = $1`, [externalId]))
       .resolves.toMatchObject({ rows: [{ count: 1 }] });
     await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.provider_snapshots WHERE entity_id = $1`, [first.titleId]))
+      .resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.aliases WHERE entity_id = $1`, [first.titleId]))
+      .resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.images WHERE entity_id = $1`, [first.titleId]))
+      .resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.title_genres WHERE title_id = $1`, [first.titleId]))
+      .resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.external_ids WHERE entity_type = 'person' AND external_id = $1`, [`person-${externalId}`]))
+      .resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(pool.query(`SELECT count(*)::int AS count FROM catalog.external_ids WHERE entity_type = 'studio' AND external_id = $1`, [`studio-${externalId}`]))
       .resolves.toMatchObject({ rows: [{ count: 1 }] });
   });
 });

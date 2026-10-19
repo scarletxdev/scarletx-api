@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ProviderEntityType, ProviderIdentity } from './catalog/types.js';
+import { supportsIdentity } from './provider/routes.js';
 
 const identity = z.object({ provider: z.enum(['tmdb', 'tpdb', 'stashdb']), externalId: z.string().min(1) });
 const entityType = z.enum(['movie', 'scene', 'performer', 'studio']);
@@ -23,12 +24,14 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
     app.post('/api/v1/ingestions/by-id', async (request, reply) => {
       const parsed = idRequest.safeParse(request.body);
       if (!parsed.success) return reply.status(422).send({ error: 'validation_error', details: parsed.error.flatten() });
+      if (!supportsIdentity(parsed.data.identity, parsed.data.entityType)) return reply.status(422).send({ error: 'validation_error', details: 'Unsupported provider for entity type' });
       const result = await dependencies.ingestion!.importById(parsed.data);
       return reply.status(result.created ? 201 : 200).send(result);
     });
     app.post('/api/v1/ingestions/selected-results', async (request, reply) => {
       const parsed = selectedRequest.safeParse(request.body);
       if (!parsed.success) return reply.status(422).send({ error: 'validation_error', details: parsed.error.flatten() });
+      if (parsed.data.selected.some(candidate => !supportsIdentity(candidate, parsed.data.entityType))) return reply.status(422).send({ error: 'validation_error', details: 'Unsupported provider for entity type' });
       const results = await Promise.all(parsed.data.selected.map(identity => dependencies.ingestion!.importById({ entityType: parsed.data.entityType, identity })));
       return reply.status(results.some(result => result.created) ? 201 : 200).send(results);
     });
@@ -43,6 +46,8 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
+    if ((error as { code?: string }).code === 'PROVIDER_NOT_FOUND') return void reply.status(404).send({ error: 'not_found' });
+    if ((error as { code?: string }).code === 'PROVIDER_PAYLOAD_INVALID') return void reply.status(502).send({ error: 'upstream_data_error' });
     void reply.status(500).send({ error: 'internal_error' });
   });
 

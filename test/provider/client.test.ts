@@ -62,6 +62,6 @@ describe('MetadataProviderClient', () => {
     });
 
     await expect(client.fetchById({ provider: 'tmdb', externalId: '123' }, 'movie'))
-      .rejects.toThrow(/title/i);
+      .rejects.toMatchObject({ code: 'PROVIDER_PAYLOAD_INVALID' });
   });
 });

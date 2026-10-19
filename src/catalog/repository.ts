@@ -1,57 +1,25 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { NormalizedCatalogRecord, ProviderIdentity } from './types.js';
-
 export interface ImportedRecord { titleId?: string; personId?: string; studioId?: string; created: boolean; snapshotCreated: boolean; }
-
 export class CatalogRepository {
   constructor(private readonly pool: Pool) {}
-
   async upsert(record: NormalizedCatalogRecord): Promise<ImportedRecord> {
-    if (record.entityType === 'performer') return this.upsertPerson(record);
-    if (record.entityType === 'studio') return this.upsertStudio(record);
     const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const primary = record.identities[0];
-      const existing = await client.query<{ entity_id: string }>(
-        `SELECT entity_id FROM catalog.external_ids WHERE entity_type = 'title' AND provider = $1 AND external_id = $2`,
-        [primary.provider, primary.externalId],
-      );
-      const titleId = existing.rows[0]?.entity_id ?? randomUUID();
-      const created = !existing.rows[0];
-      if (created) {
-        await client.query(`INSERT INTO catalog.titles (id, kind, display_title, sort_title, normalized_title) VALUES ($1, $2, $3, $3, $4)`, [titleId, record.entityType, record.title, record.normalizedTitle]);
-      } else {
-        await client.query(`UPDATE catalog.titles SET display_title = $2, sort_title = $2, normalized_title = $3, version = version + 1, updated_at = now() WHERE id = $1`, [titleId, record.title, record.normalizedTitle]);
-      }
-      for (const identity of record.identities) await this.ensureExternalId(client, 'title', titleId, identity);
-      await client.query('DELETE FROM catalog.title_credits WHERE title_id = $1 AND source = $2', [titleId, primary.provider]);
-      await client.query('DELETE FROM catalog.title_studios WHERE title_id = $1 AND source = $2', [titleId, primary.provider]);
-      for (const [index, studio] of record.studios.entries()) {
-        const studioId = await this.ensureStudio(client, studio.name, studio.identity);
-        await client.query(`INSERT INTO catalog.title_studios (title_id, studio_id, relation_type, position, source) VALUES ($1, $2, 'production', $3, $4)`, [titleId, studioId, index, primary.provider]);
-      }
-      for (const credit of record.credits) {
-        const personId = await this.ensurePerson(client, credit.personName, credit.identity);
-        await client.query(`INSERT INTO catalog.title_credits (title_id, person_id, role, character_name, billing_order, source) VALUES ($1, $2, $3, $4, $5, $6)`, [titleId, personId, credit.role, credit.character ?? null, credit.billingOrder, primary.provider]);
-      }
-      const hash = createHash('sha256').update(JSON.stringify(record.rawPayload)).digest('hex');
-      const snapshot = await client.query(`INSERT INTO catalog.provider_snapshots (entity_type, entity_id, provider, payload, payload_hash, parser_version) VALUES ('title', $1, $2, $3, $4, 'v1') ON CONFLICT DO NOTHING RETURNING id`, [titleId, primary.provider, record.rawPayload, hash]);
-      await client.query('COMMIT');
-      return { titleId, created, snapshotCreated: snapshot.rowCount === 1 };
+    try { await client.query('BEGIN'); const kind = record.entityType === 'performer' ? 'person' : record.entityType === 'studio' ? 'studio' : 'title'; const primary = record.identities[0]; const found = await this.findIdentity(client, kind, primary); const id = found ?? randomUUID(); const created = !found;
+      if (kind === 'title') await this.writeTitle(client, id, record, created); else await this.writeNamed(client, kind, id, record.title, created);
+      for (const identity of record.identities) await this.ensureExternalId(client, kind, id, identity);
+      await this.replaceMetadata(client, kind, id, primary.provider, record); const snapshotCreated = await this.snapshot(client, kind, id, primary.provider, record.rawPayload);
+      if (kind === 'title') await this.relationships(client, id, primary.provider, record); await client.query('COMMIT');
+      return kind === 'title' ? { titleId: id, created, snapshotCreated } : kind === 'person' ? { personId: id, created, snapshotCreated } : { studioId: id, created, snapshotCreated };
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
-
-  private async ensureExternalId(client: any, entityType: string, entityId: string, identity: ProviderIdentity) { await client.query(`INSERT INTO catalog.external_ids (entity_type, entity_id, provider, external_id) VALUES ($1, $2, $3, $4) ON CONFLICT (entity_type, provider, external_id) DO UPDATE SET entity_id = EXCLUDED.entity_id, updated_at = now()`, [entityType, entityId, identity.provider, identity.externalId]); }
-  private async ensureStudio(client: any, name: string, identity?: ProviderIdentity): Promise<string> { const id = identity ? (await client.query(`SELECT entity_id FROM catalog.external_ids WHERE entity_type='studio' AND provider=$1 AND external_id=$2`, [identity.provider, identity.externalId])).rows[0]?.entity_id : undefined; const studioId = id ?? randomUUID(); if (!id) await client.query(`INSERT INTO catalog.studios (id,name,normalized_name) VALUES ($1,$2,$3)`, [studioId,name,name.toLowerCase()]); if (identity) await this.ensureExternalId(client,'studio',studioId,identity); return studioId; }
-  private async ensurePerson(client: any, name: string, identity?: ProviderIdentity): Promise<string> { const id = identity ? (await client.query(`SELECT entity_id FROM catalog.external_ids WHERE entity_type='person' AND provider=$1 AND external_id=$2`, [identity.provider, identity.externalId])).rows[0]?.entity_id : undefined; const personId = id ?? randomUUID(); if (!id) await client.query(`INSERT INTO catalog.people (id,name,normalized_name) VALUES ($1,$2,$3)`, [personId,name,name.toLowerCase()]); if (identity) await this.ensureExternalId(client,'person',personId,identity); return personId; }
-  private async upsertPerson(record: NormalizedCatalogRecord): Promise<ImportedRecord> {
-    const client = await this.pool.connect();
-    try { await client.query('BEGIN'); const id = await this.ensurePerson(client, record.title, record.identities[0]); await client.query('COMMIT'); return { personId: id, created: true, snapshotCreated: false }; } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
-  }
-  private async upsertStudio(record: NormalizedCatalogRecord): Promise<ImportedRecord> {
-    const client = await this.pool.connect();
-    try { await client.query('BEGIN'); const id = await this.ensureStudio(client, record.title, record.identities[0]); await client.query('COMMIT'); return { studioId: id, created: true, snapshotCreated: false }; } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
-  }
+  private async findIdentity(client: PoolClient, type: string, identity: ProviderIdentity) { return (await client.query<{entity_id:string}>('SELECT entity_id FROM catalog.external_ids WHERE entity_type=$1 AND provider=$2 AND external_id=$3',[type,identity.provider,identity.externalId])).rows[0]?.entity_id; }
+  private async writeTitle(client: PoolClient,id:string,r:NormalizedCatalogRecord,created:boolean) { if(created) await client.query('INSERT INTO catalog.titles (id,kind,display_title,sort_title,normalized_title) VALUES ($1,$2,$3,$3,$4)',[id,r.entityType,r.title,r.normalizedTitle]); else await client.query('UPDATE catalog.titles SET display_title=$2,sort_title=$2,normalized_title=$3,version=version+1,updated_at=now() WHERE id=$1',[id,r.title,r.normalizedTitle]); }
+  private async writeNamed(client: PoolClient,type:'person'|'studio',id:string,name:string,created:boolean) { const table=type==='person'?'people':'studios'; if(created) await client.query(`INSERT INTO catalog.${table} (id,name,normalized_name) VALUES ($1,$2,$3)`,[id,name,name.trim().toLocaleLowerCase()]); else await client.query(`UPDATE catalog.${table} SET name=$2,normalized_name=$3,updated_at=now() WHERE id=$1`,[id,name,name.trim().toLocaleLowerCase()]); }
+  private async ensureExternalId(client: PoolClient,type:string,id:string,identity:ProviderIdentity) { const found=await this.findIdentity(client,type,identity); if(found&&found!==id) throw new Error(`External identity ${identity.provider}:${identity.externalId} already belongs to another ${type}`); if(!found) await client.query('INSERT INTO catalog.external_ids (entity_type,entity_id,provider,external_id) VALUES ($1,$2,$3,$4)',[type,id,identity.provider,identity.externalId]); }
+  private async replaceMetadata(client: PoolClient,type:string,id:string,source:string,r:NormalizedCatalogRecord) { await client.query('DELETE FROM catalog.aliases WHERE entity_type=$1 AND entity_id=$2 AND source=$3',[type,id,source]); await client.query('DELETE FROM catalog.images WHERE entity_type=$1 AND entity_id=$2 AND source=$3',[type,id,source]); for(const alias of r.aliases) await client.query('INSERT INTO catalog.aliases (entity_type,entity_id,alias,normalized_alias,source) VALUES ($1,$2,$3,$4,$5)',[type,id,alias,alias.trim().toLocaleLowerCase(),source]); for(const [position,image] of r.images.entries()) await client.query('INSERT INTO catalog.images (entity_type,entity_id,image_type,url,position,source) VALUES ($1,$2,$3,$4,$5,$6)',[type,id,image.type??'unknown',image.url,position,source]); if(type==='title') { await client.query('DELETE FROM catalog.title_genres WHERE title_id=$1',[id]); for(const genre of r.genres) { const normalized=genre.trim().toLocaleLowerCase(); const result=await client.query<{id:string}>('INSERT INTO catalog.genres (name,normalized_name) VALUES ($1,$2) ON CONFLICT (normalized_name) DO UPDATE SET name=EXCLUDED.name RETURNING id',[genre,normalized]); await client.query('INSERT INTO catalog.title_genres (title_id,genre_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[id,result.rows[0].id]); } } }
+  private async snapshot(client: PoolClient,type:string,id:string,provider:string,payload:unknown) { const hash=createHash('sha256').update(JSON.stringify(payload)).digest('hex'); const result=await client.query("INSERT INTO catalog.provider_snapshots (entity_type,entity_id,provider,payload,payload_hash,parser_version) VALUES ($1,$2,$3,$4,$5,'v1') ON CONFLICT DO NOTHING RETURNING id",[type,id,provider,payload,hash]); return result.rowCount===1; }
+  private async relationships(client:PoolClient,titleId:string,source:string,r:NormalizedCatalogRecord) { await client.query('DELETE FROM catalog.title_credits WHERE title_id=$1 AND source=$2',[titleId,source]); await client.query('DELETE FROM catalog.title_studios WHERE title_id=$1 AND source=$2',[titleId,source]); for(const [position,studio] of r.studios.entries()) { const id=await this.ensureRelated(client,'studio',studio.name,studio.identity); await client.query("INSERT INTO catalog.title_studios (title_id,studio_id,relation_type,position,source) VALUES ($1,$2,'production',$3,$4)",[titleId,id,position,source]); } for(const credit of r.credits) { const id=await this.ensureRelated(client,'person',credit.personName,credit.identity); await client.query('INSERT INTO catalog.title_credits (title_id,person_id,role,character_name,billing_order,source) VALUES ($1,$2,$3,$4,$5,$6)',[titleId,id,credit.role,credit.character??null,credit.billingOrder,source]); } }
+  private async ensureRelated(client:PoolClient,type:'person'|'studio',name:string,identity?:ProviderIdentity) { if(!identity) throw new Error(`${type} relationship requires a provider identity`); const found=await this.findIdentity(client,type,identity); const id=found??randomUUID(); await this.writeNamed(client,type,id,name,!found); await this.ensureExternalId(client,type,id,identity); return id; }
 }
