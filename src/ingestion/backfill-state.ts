@@ -13,3 +13,8 @@ export function advanceCursor(cursors: Record<string, number>, feed: string, com
 export function chunk<T>(values: T[], size: number): T[][] {
   return Array.from({ length: Math.ceil(values.length / size) }, (_value, index) => values.slice(index * size, (index + 1) * size));
 }
+export function selectTargets(targets: ImportTarget[], feeds?: string): ImportTarget[] {
+  if (!feeds) return targets;
+  const selected = new Set(feeds.split(',').map(feed => feed.trim()).filter(Boolean));
+  return targets.filter(target => selected.has(target.feed));
+}

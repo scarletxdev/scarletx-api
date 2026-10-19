@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceCursor, chunk, importTargets } from '../../src/ingestion/backfill-state.js';
+import { advanceCursor, chunk, importTargets, selectTargets } from '../../src/ingestion/backfill-state.js';
 
 describe('backfill state', () => {
   it('maps every provider feed to its API entity and resumes from its cursor', () => {
@@ -14,5 +14,9 @@ describe('backfill state', () => {
 
   it('splits a feed into restart-safe checkpoint batches', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+
+  it('selects only requested feeds for priority backfills', () => {
+    expect(selectTargets(importTargets, 'performer')).toEqual([{ entityType: 'performer', provider: 'stashdb', feed: 'performer' }]);
   });
 });

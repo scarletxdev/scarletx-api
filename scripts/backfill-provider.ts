@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { advanceCursor, chunk, importTargets } from '../src/ingestion/backfill-state.js';
+import { advanceCursor, chunk, importTargets, selectTargets } from '../src/ingestion/backfill-state.js';
 
 type State = { cursors: Record<string, number>; imported: number; failed: number };
 const args = new Map(process.argv.slice(2).map(value => { const [key, entry = 'true'] = value.split('='); return [key, entry]; }));
@@ -16,7 +16,7 @@ async function saveState(state: State) { await mkdir(dirname(statePath), { recur
 
 const state = await loadState();
 let remaining = maximum || Number.POSITIVE_INFINITY;
-for (const target of importTargets) {
+for (const target of selectTargets(importTargets, args.get('--feeds'))) {
   if (!remaining) break;
   const ids = await (await fetch(`${providerUrl}/v4/${target.feed}/changed`)).json() as unknown[];
   const start = state.cursors[target.feed] ?? 0;

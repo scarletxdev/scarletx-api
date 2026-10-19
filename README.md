@@ -28,3 +28,5 @@ The script loads `.env`, applies migrations, starts the API when needed, and
 stores progress in `.scarletx-backfill.json`. Re-run the same command after an
 interruption to resume. Use `npm run backfill:local -- --max=1000` to process a
 bounded first run.
+
+To prioritize a feed, pass its name: `npm run backfill:local -- --feeds=performer`.
