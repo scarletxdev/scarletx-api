@@ -31,13 +31,15 @@ export function normalizeProviderRecord(payload: unknown, entityType: ProviderEn
   const studio = asRecord(source.studio);
   const credits = Array.isArray(source.credits) ? source.credits.flatMap((credit, index) => {
     const item = asRecord(credit);
-    if (!item || typeof item.personName !== 'string') return [];
-    return [{ personName: item.personName, identity: identities({ stashId: item.performerForeignId })[0], role: item.type === 'cast' ? 'performer' : typeof item.type === 'string' ? item.type : 'contributor', character: typeof item.character === 'string' ? item.character : undefined, billingOrder: typeof item.order === 'number' ? item.order : index }];
+    const personName = item?.personName ?? item?.PersonName;
+    const performer = asRecord(item?.performer ?? item?.Performer);
+    if (!item || typeof personName !== 'string') return [];
+    return [{ personName, identity: identities(performer?.foreignIds ?? performer?.ForeignIds)[0], role: item.type === 'cast' ? 'performer' : typeof item.type === 'string' ? item.type : 'performer', character: typeof (item.character ?? item.Character) === 'string' ? String(item.character ?? item.Character) : undefined, billingOrder: typeof (item.order ?? item.Order) === 'number' ? Number(item.order ?? item.Order) : index }];
   }) : [];
   return {
     entityType, title: source.title, normalizedTitle: source.title.trim().toLocaleLowerCase(), identities: recordIdentities,
     aliases: asStrings(source.aliases), genres: asStrings(source.genres),
-    studios: studio && typeof studio.title === 'string' ? [{ name: studio.title, identity: identities(studio.foreignIds)[0] }] : [],
+    studios: studio && typeof (studio.title ?? studio.Title) === 'string' ? [{ name: String(studio.title ?? studio.Title), identity: identities(studio.foreignIds ?? studio.ForeignIds)[0] }] : [],
     credits,
     images: Array.isArray(source.images)
       ? source.images.flatMap((image) => {
