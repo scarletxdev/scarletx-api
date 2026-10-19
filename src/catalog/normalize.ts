@@ -8,14 +8,23 @@ function identities(ids: unknown): ProviderIdentity[] {
   const source = asRecord(ids);
   if (!source) return [];
   const values: ProviderIdentity[] = [];
-  if (typeof source.tmdbId === 'number' && source.tmdbId > 0) values.push({ provider: 'tmdb', externalId: String(source.tmdbId) });
-  if (typeof source.tpdbId === 'string' && source.tpdbId) values.push({ provider: 'tpdb', externalId: source.tpdbId });
-  if (typeof source.stashId === 'string' && source.stashId) values.push({ provider: 'stashdb', externalId: source.stashId });
+  const tmdbId = source.tmdbId ?? source.TmdbId;
+  const tpdbId = source.tpdbId ?? source.TpdbId;
+  const stashId = source.stashId ?? source.StashId;
+  if (typeof tmdbId === 'number' && tmdbId > 0) values.push({ provider: 'tmdb', externalId: String(tmdbId) });
+  if (typeof tpdbId === 'string' && tpdbId) values.push({ provider: 'tpdb', externalId: tpdbId });
+  if (typeof stashId === 'string' && stashId) values.push({ provider: 'stashdb', externalId: stashId });
   return values;
 }
 
 export function normalizeProviderRecord(payload: unknown, entityType: ProviderEntityType): NormalizedCatalogRecord {
-  const source = asRecord(payload);
+  const raw = asRecord(payload);
+  const source = raw && {
+    ...raw,
+    title: raw.title ?? raw.Title, foreignIds: raw.foreignIds ?? raw.ForeignIds,
+    aliases: raw.aliases ?? raw.Aliases ?? (Array.isArray(raw.AlternativeTitles) ? raw.AlternativeTitles.map((x: any) => x.Title) : []), genres: raw.genres ?? raw.Genres,
+    studio: raw.studio ?? raw.Studio, credits: raw.credits ?? raw.Credits, images: raw.images ?? raw.Images,
+  };
   if (!source || typeof source.title !== 'string' || !source.title.trim()) throw new Error('Provider payload requires a title');
   const recordIdentities = identities(source.foreignIds);
   if (!recordIdentities.length) throw new Error('Provider payload requires an external identity');

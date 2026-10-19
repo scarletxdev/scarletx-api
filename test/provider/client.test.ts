@@ -45,6 +45,16 @@ describe('MetadataProviderClient', () => {
     expect(record.genres).toEqual([]);
   });
 
+  it('normalizes the provider\'s PascalCase response fields', async () => {
+    const client = new MetadataProviderClient({
+      baseUrl: 'https://metadata.example',
+      fetch: async () => new Response(JSON.stringify({
+        Title: 'Live Shape', ItemType: 'Movie', ForeignIds: { TmdbId: 123 }, Credits: [], Images: [], Genres: [],
+      }), { status: 200 }),
+    });
+    await expect(client.fetchById({ provider: 'tmdb', externalId: '123' }, 'movie')).resolves.toMatchObject({ title: 'Live Shape' });
+  });
+
   it('rejects malformed provider payloads', async () => {
     const client = new MetadataProviderClient({
       baseUrl: 'https://metadata.example',
