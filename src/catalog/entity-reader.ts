@@ -2,6 +2,10 @@ import type { Pool } from 'pg';
 
 export class EntityReader {
   constructor(private readonly pool: Pool, private readonly entityType: 'person' | 'studio') {}
+  async list(limit: number): Promise<unknown[]> {
+    const table = this.entityType === 'person' ? 'people' : 'studios';
+    return (await this.pool.query(`SELECT id, name FROM catalog.${table} ORDER BY name LIMIT $1`, [limit])).rows;
+  }
 
   async findById(id: string): Promise<unknown | undefined> {
     const table = this.entityType === 'person' ? 'people' : 'studios';

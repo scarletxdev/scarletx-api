@@ -57,4 +57,15 @@ describe('ingestion routes', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/studios/studio-1' })).json()).toMatchObject({ name: 'Fixture Studio' });
     expect((await app.inject({ method: 'GET', url: '/api/v1/people/missing' })).statusCode).toBe(404);
   });
+
+  it('lists catalog resources with a bounded limit', async () => {
+    const titles = { findById: vi.fn(), list: vi.fn().mockResolvedValue([{ id: 'title-1', displayTitle: 'Fixture' }]) };
+    const people = { findById: vi.fn(), list: vi.fn().mockResolvedValue([{ id: 'person-1', name: 'Fixture Performer' }]) };
+    const studios = { findById: vi.fn(), list: vi.fn().mockResolvedValue([{ id: 'studio-1', name: 'Fixture Studio' }]) };
+    const app = buildServer({ titles, people, studios });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/titles?limit=10' })).json()).toEqual([{ id: 'title-1', displayTitle: 'Fixture' }]);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/people?limit=10' })).json()).toEqual([{ id: 'person-1', name: 'Fixture Performer' }]);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/studios?limit=10' })).json()).toEqual([{ id: 'studio-1', name: 'Fixture Studio' }]);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/titles?limit=101' })).statusCode).toBe(422);
+  });
 });

@@ -9,7 +9,7 @@ const idRequest = z.object({ entityType, identity });
 const selectedRequest = z.object({ entityType, query: z.string().min(1), selected: z.array(identity).min(1) });
 
 type IngestionPort = { search(entityType: ProviderEntityType, query: string): Promise<unknown[]>; importById(request: { entityType: ProviderEntityType; identity: ProviderIdentity }): Promise<{ created: boolean; snapshotCreated: boolean; titleId?: string; personId?: string; studioId?: string }>; };
-type Reader = { findById(id: string): Promise<unknown | undefined> };
+type Reader = { findById(id: string): Promise<unknown | undefined>; list?(limit: number): Promise<unknown[]> };
 export interface ServerDependencies { ingestion?: IngestionPort; titles?: Reader; people?: Reader; studios?: Reader; }
 
 export function buildServer(dependencies: ServerDependencies = {}): FastifyInstance {
@@ -38,6 +38,11 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
     });
   }
   if (dependencies.titles) {
+    app.get('/api/v1/titles', async (request, reply) => {
+      const parsed = z.object({ limit: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(request.query);
+      if (!parsed.success || !dependencies.titles!.list) return reply.status(422).send({ error: 'validation_error' });
+      return dependencies.titles!.list(parsed.data.limit);
+    });
     app.get('/api/v1/titles/:id', async (request, reply) => {
       const { id } = request.params as { id: string };
       const title = await dependencies.titles!.findById(id);
@@ -46,6 +51,11 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
   }
   for (const [path, reader] of [['people', dependencies.people], ['studios', dependencies.studios]] as const) {
     if (!reader) continue;
+    app.get(`/api/v1/${path}`, async (request, reply) => {
+      const parsed = z.object({ limit: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(request.query);
+      if (!parsed.success || !reader.list) return reply.status(422).send({ error: 'validation_error' });
+      return reader.list(parsed.data.limit);
+    });
     app.get(`/api/v1/${path}/:id`, async (request, reply) => {
       const { id } = request.params as { id: string };
       const entity = await reader.findById(id);

@@ -2,6 +2,9 @@ import type { Pool } from 'pg';
 
 export class TitleReader {
   constructor(private readonly pool: Pool) {}
+  async list(limit: number): Promise<unknown[]> {
+    return (await this.pool.query(`SELECT id, display_title AS "displayTitle", kind FROM catalog.titles ORDER BY display_title LIMIT $1`, [limit])).rows;
+  }
   async findById(id: string): Promise<unknown | undefined> {
     const title = await this.pool.query(`SELECT id, display_title AS "displayTitle", kind FROM catalog.titles WHERE id = $1`, [id]);
     if (!title.rows[0]) return undefined;
