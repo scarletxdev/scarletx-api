@@ -11,6 +11,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:migrate": "node-pg-migrate up -m src/db/migrations",
     "db:rollback": "node-pg-migrate down -m src/db/migrations"
+    ,"backfill": "tsx scripts/backfill-provider.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
