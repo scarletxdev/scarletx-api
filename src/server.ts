@@ -9,7 +9,8 @@ const idRequest = z.object({ entityType, identity });
 const selectedRequest = z.object({ entityType, query: z.string().min(1), selected: z.array(identity).min(1) });
 
 type IngestionPort = { search(entityType: ProviderEntityType, query: string): Promise<unknown[]>; importById(request: { entityType: ProviderEntityType; identity: ProviderIdentity }): Promise<{ created: boolean; snapshotCreated: boolean; titleId?: string; personId?: string; studioId?: string }>; };
-export interface ServerDependencies { ingestion?: IngestionPort; titles?: { findById(id: string): Promise<unknown | undefined> }; }
+type Reader = { findById(id: string): Promise<unknown | undefined> };
+export interface ServerDependencies { ingestion?: IngestionPort; titles?: Reader; people?: Reader; studios?: Reader; }
 
 export function buildServer(dependencies: ServerDependencies = {}): FastifyInstance {
   const app = Fastify();
@@ -41,6 +42,14 @@ export function buildServer(dependencies: ServerDependencies = {}): FastifyInsta
       const { id } = request.params as { id: string };
       const title = await dependencies.titles!.findById(id);
       return title ? reply.send(title) : reply.status(404).send({ error: 'not_found' });
+    });
+  }
+  for (const [path, reader] of [['people', dependencies.people], ['studios', dependencies.studios]] as const) {
+    if (!reader) continue;
+    app.get(`/api/v1/${path}/:id`, async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const entity = await reader.findById(id);
+      return entity ? reply.send(entity) : reply.status(404).send({ error: 'not_found' });
     });
   }
 

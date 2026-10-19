@@ -48,4 +48,13 @@ describe('ingestion routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(title);
   });
+
+  it('returns stored performers and studios by ID', async () => {
+    const people = { findById: vi.fn().mockImplementation((id: string) => Promise.resolve(id === 'person-1' ? { id, name: 'Fixture Performer', identities: [], aliases: [], images: [] } : undefined)) };
+    const studios = { findById: vi.fn().mockResolvedValue({ id: 'studio-1', name: 'Fixture Studio', identities: [], aliases: [], images: [] }) };
+    const app = buildServer({ people, studios });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/people/person-1' })).json()).toMatchObject({ name: 'Fixture Performer' });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/studios/studio-1' })).json()).toMatchObject({ name: 'Fixture Studio' });
+    expect((await app.inject({ method: 'GET', url: '/api/v1/people/missing' })).statusCode).toBe(404);
+  });
 });
